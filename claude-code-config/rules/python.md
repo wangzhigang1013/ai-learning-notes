@@ -67,6 +67,27 @@
 """
 ```
 
+## 进度显示（必须有）
+
+- **每个脚本必须有进度显示**，让人知道跑到哪了
+- 用 `print()` + `flush=True` 输出进度，不要用 tqdm/rich 等依赖 TTY 的库
+- 原因：模型在终端运行脚本时 stdout 会被缓冲，不加 flush 可能看不到输出
+- 进度格式：`[当前/总数] 状态 描述`，每条一行
+
+```python
+print(f"[{i+1}/{total}] 处理中: {item['name']}...", flush=True)
+print(f"[{i+1}/{total}] 完成，已保存", flush=True)
+print(f"[{i+1}/{total}] 跳过（已有结果）", flush=True)
+```
+
+- 任务开始时打印总条数和预计信息，结束时打印汇总
+
+```python
+print(f"开始处理，共 {total} 条，线程数 {workers}", flush=True)
+# ... 处理 ...
+print(f"\n全部完成！成功 {success} 条，失败 {fail} 条", flush=True)
+```
+
 ## 通用规范
 
 - Python 3.10+，类型提示用 `X | Y`

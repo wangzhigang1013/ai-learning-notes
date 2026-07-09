@@ -37,6 +37,36 @@
 - **`--workers N`**：并发线程数（默认 3）
 - **`--task-name xxx`**：区分不同批次
 
+## 注释与文档
+
+- **所有注释和 docstring 必须用中文**
+- 每个函数必须写 docstring，说明功能、参数含义、返回值
+- **脚本顶部必须写使用说明**，包含完整的命令示例，格式：
+
+```python
+"""
+调取 XX API 的脚本
+
+使用方法：
+    # 默认运行（多线程 3，自动续跑）
+    python script.py
+
+    # 指定线程数
+    python script.py --workers 5
+
+    # 从头开始跑
+    python script.py --restart
+
+    # 只跑第 100-200 条
+    python script.py --start 100 --end 200
+
+    # 预览会执行哪些
+    python script.py --dry-run
+
+依赖：pip install openai python-dotenv
+"""
+```
+
 ## 通用规范
 
 - Python 3.10+，类型提示用 `X | Y`

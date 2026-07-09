@@ -98,33 +98,123 @@ def call_with_retry(client, max_retries=3, **kwargs):
                 raise
 ```
 
-### 复跑机制
-- 因为每条数据调完就存盘，复跑时只需检查 outputs 目录下已有多少个结果文件
-- 已有结果的条目自动跳过，从断点继续
-- 命令行参数：`--resume` 启用复跑模式
+### 断点续跑机制（默认行为）
+
+**默认就是续跑**：重新运行脚本时，自动检测已有结果，跳过已完成的条目，从断点继续。
+**只有显式指定 `--restart` 才从头开始**，避免浪费已完成的调用。
 
 ```python
-import glob
+import argparse
+import json
+from pathlib import Path
 
 def get_completed_indices(task_name: str) -> set[int]:
-    """获取已完成的条目序号，复跑时跳过"""
+    """获取已完成的条目序号"""
     output_dir = Path("outputs") / task_name
     if not output_dir.exists():
         return set()
     indices = set()
     for f in output_dir.glob("*.json"):
-        data = json.loads(f.read_text(encoding="utf-8"))
-        indices.add(data["index"])
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            indices.add(data["index"])
+        except (json.JSONDecodeError, KeyError):
+            continue  # 跳过损坏的文件
     return indices
 
-# 复跑示例
-completed = get_completed_indices("my_task") if resume else set()
-for i, item in enumerate(data_list):
-    if i in completed:
-        print(f"跳过第 {i} 条（已有结果）")
-        continue
-    response = call_with_retry(client, messages=[...])
-    save_result("my_task", i, request_data=item, response_data=response.model_dump())
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--restart", action="store_true",
+                        help="清空已有结果，从头开始跑（默认是续跑）")
+    parser.add_argument("--task-name", default="default",
+                        help="任务名，用于区分不同批次的输出")
+    parser.add_argument("--start", type=int, default=0,
+                        help="从第几条开始跑（跳过前面的）")
+    parser.add_argument("--end", type=int, default=-1,
+                        help="跑到第几条结束（-1 表示全部）")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="只打印会跳过/执行哪些条目，不实际调用")
+    return parser.parse_args()
+
+def main():
+    args = parse_args()
+    task_name = args.task_name
+
+    # --restart：清空已有结果，从头开始
+    if args.restart:
+        output_dir = Path("outputs") / task_name
+        if output_dir.exists():
+            count = len(list(output_dir.glob("*.json")))
+            for f in output_dir.glob("*.json"):
+                f.unlink()
+            print(f"已清空 {count} 个历史结果，从头开始")
+    else:
+        # 默认续跑：检测已有结果，自动跳过
+        completed = get_completed_indices(task_name)
+        if completed:
+            print(f"检测到 {len(completed)} 个已完成条目，自动跳过")
+
+    # 加载数据
+    data_list = load_data()  # 你的数据加载逻辑
+    completed = get_completed_indices(task_name)
+
+    # --start / --end 范围控制
+    start = args.start
+    end = args.end if args.end > 0 else len(data_list)
+    data_list = data_list[start:end]
+
+    # --dry-run：只打印计划，不执行
+    if args.dry_run:
+        for i, item in enumerate(data_list):
+            actual_idx = start + i
+            status = "跳过" if actual_idx in completed else "执行"
+            print(f"  [{actual_idx}] {status}")
+        return
+
+    # 正式执行
+    total = len(data_list)
+    for i, item in enumerate(data_list):
+        actual_idx = start + i
+        if actual_idx in completed:
+            print(f"[{actual_idx+1}/{total}] 跳过（已有结果）")
+            continue
+
+        print(f"[{actual_idx+1}/{total}] 处理中...")
+        response = call_with_retry(client, messages=[...])
+        save_result(task_name, actual_idx, request_data=item, response_data=response.model_dump())
+        print(f"[{actual_idx+1}/{total}] 完成，已保存")
+
+    print(f"\n全部完成！结果保存在 outputs/{task_name}/")
+```
+
+### 命令行参数说明
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| 无参数 | 续跑 | 自动检测已有结果，跳过已完成的 |
+| `--restart` | - | 清空历史结果，从头开始 |
+| `--task-name xxx` | `default` | 区分不同批次的输出 |
+| `--start N` | `0` | 从第 N 条开始 |
+| `--end N` | `-1` | 跑到第 N 条结束 |
+| `--dry-run` | - | 只打印计划，不实际调用 |
+
+### 使用示例
+
+```bash
+# 第一次跑（全部执行）
+python script.py
+
+# 中断后重新跑（自动续跑，跳过已完成的）
+python script.py
+
+# 强制从头开始
+python script.py --restart
+
+# 只跑第 100-200 条
+python script.py --start 100 --end 200
+
+# 先看看会跑哪些
+python script.py --dry-run
 ```
 
 ## 通用 Python 规范

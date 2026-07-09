@@ -12,6 +12,7 @@
 | `rules/code-quality.md` | 写码前中后规范、安全约束 |
 | `rules/python.md` | Python 脚本生成规范：LLM API 调用、结果持久化、重试机制 |
 | `advanced-guide.md` | **高级用法完整指南**（Skills/Hooks/Subagents/MCP/Agent Teams） |
+| `practical-tips.md` | **实用技巧**（日常命令、工作流、Hook 配置、Skill 模板、场景示例） |
 | `research-plan.md` | 调研计划文档 |
 
 ## 快速开始
